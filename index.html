@@ -77,9 +77,34 @@
       <button onclick="openConfigModal()" class="text-xs bg-slate-800/90 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
         <span>⚙️</span> Fields
       </button>
-      <button onclick="exportToPDF()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-md">
-        <span>📥</span> PDF
-      </button>
+
+      <!-- Data & Export Menu Dropdown (Hover on Desktop, Tap on Mobile) -->
+      <div class="relative group" id="dataDropdownWrapper">
+        <button id="btnDataMenu" onclick="toggleDataDropdown(event)" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-md">
+          <span>📦</span> Data ▾
+        </button>
+        <!-- Dropdown Menu -->
+        <div id="dataDropdownMenu" class="absolute right-0 top-full pt-1.5 w-48 hidden group-hover:block z-50">
+          <div class="bg-[#131b2a] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs backdrop-blur-md">
+            <button onclick="exportToPDF()" class="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition">
+              <span>📥</span> Download PDF
+            </button>
+            <button onclick="exportJSONBackup()" class="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition">
+              <span>💾</span> Export Backup (JSON)
+            </button>
+            <button onclick="triggerImportFileInput()" class="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition">
+              <span>📤</span> Import Backup (JSON)
+            </button>
+            <div class="border-t border-slate-800 my-1"></div>
+            <button onclick="clearAllDataAction()" class="w-full text-left px-3 py-2 text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 transition">
+              <span>🗑️</span> Delete All Data
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Hidden input for file import -->
+      <input type="file" id="importFileInput" accept=".json" onchange="handleImportJSON(event)" class="hidden" />
+
     </div>
   </div>
 
@@ -223,6 +248,14 @@
     </div>
   </div>
 
+  <!-- Floating Toast Notification with Undo -->
+  <div id="toastNotification" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#131b2a] border border-slate-700 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl z-50 hidden flex items-center gap-3">
+    <span id="toastMsg">Action completed</span>
+    <button id="toastUndoBtn" onclick="triggerUndo()" class="text-amber-400 hover:text-amber-300 font-bold px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 transition">
+      Undo (Ctrl+Z)
+    </button>
+  </div>
+
   <!-- APP JAVASCRIPT LOGIC -->
   <script>
     // ==========================================
@@ -245,6 +278,14 @@
     let currentUser = null;
     let unsubscribeFirestore = null;
     let sortableInstance = null;
+    let toastTimeout = null;
+
+    // Undo / Redo Stacks
+    let undoStack = [];
+    let redoStack = [];
+
+    // Track expanded cards
+    const expandedCardKeys = new Set();
 
     const STORAGE_KEY_FIELDS = 'mtj_custom_fields';
     const STORAGE_KEY_TRADES = 'mtj_trades_data';
@@ -278,7 +319,6 @@
     }
 
     function init() {
-      // Load Local Storage first
       const savedFields = localStorage.getItem(STORAGE_KEY_FIELDS);
       if (savedFields) {
         try { 
@@ -311,6 +351,102 @@
           if (unsubscribeFirestore) unsubscribeFirestore();
         }
       });
+
+      // Global keyboard shortcut for Ctrl+Z and Ctrl+Y
+      window.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          triggerUndo();
+        } else if (
+          ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
+        ) {
+          e.preventDefault();
+          triggerRedo();
+        }
+      });
+    }
+
+    // ==========================================
+    // Undo / Redo System
+    // ==========================================
+    function pushUndoState(actionDescription) {
+      undoStack.push({
+        desc: actionDescription,
+        tradesData: JSON.parse(JSON.stringify(tradesData)),
+        customFields: JSON.parse(JSON.stringify(customFields))
+      });
+      if (undoStack.length > 25) undoStack.shift();
+      redoStack = []; // reset redo on new action
+    }
+
+    function triggerUndo() {
+      if (undoStack.length === 0) {
+        showToast('Nothing to undo');
+        return;
+      }
+      const previousState = undoStack.pop();
+      redoStack.push({
+        desc: previousState.desc,
+        tradesData: JSON.parse(JSON.stringify(tradesData)),
+        customFields: JSON.parse(JSON.stringify(customFields))
+      });
+
+      tradesData = previousState.tradesData;
+      customFields = previousState.customFields;
+
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      localStorage.setItem(STORAGE_KEY_FIELDS, JSON.stringify(customFields));
+      syncToCloud();
+
+      renderCalendar();
+      renderTradesForDate();
+      renderFieldsList();
+      showToast(`↶ Undone: ${previousState.desc}`);
+    }
+
+    function triggerRedo() {
+      if (redoStack.length === 0) {
+        showToast('Nothing to redo');
+        return;
+      }
+      const nextState = redoStack.pop();
+      undoStack.push({
+        desc: nextState.desc,
+        tradesData: JSON.parse(JSON.stringify(tradesData)),
+        customFields: JSON.parse(JSON.stringify(customFields))
+      });
+
+      tradesData = nextState.tradesData;
+      customFields = nextState.customFields;
+
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      localStorage.setItem(STORAGE_KEY_FIELDS, JSON.stringify(customFields));
+      syncToCloud();
+
+      renderCalendar();
+      renderTradesForDate();
+      renderFieldsList();
+      showToast(`↷ Redone: ${nextState.desc}`);
+    }
+
+    function showToast(message, showUndoBtn = false) {
+      const toast = document.getElementById('toastNotification');
+      const msgEl = document.getElementById('toastMsg');
+      const undoBtn = document.getElementById('toastUndoBtn');
+
+      if (!toast || !msgEl) return;
+      msgEl.innerText = message;
+      undoBtn.style.display = showUndoBtn ? 'inline-block' : 'none';
+
+      toast.classList.remove('hidden');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 4500);
     }
 
     // ==========================================
@@ -334,7 +470,6 @@
           renderFieldsList();
           updateSyncBadge(true);
         } else {
-          // First time cloud upload
           syncToCloud();
         }
       }, (err) => {
@@ -346,7 +481,6 @@
     function syncToCloud() {
       if (!currentUser) return;
       try {
-        // Guarantee clean JSON with zero undefined fields
         const cleanFields = JSON.parse(JSON.stringify(customFields));
         const cleanTrades = JSON.parse(JSON.stringify(tradesData));
         db.collection('users').doc(currentUser.uid).set({
@@ -415,10 +549,24 @@
     }
 
     function handleLogout() {
-      if (confirm('Sign out?')) {
-        auth.signOut();
-      }
+      auth.signOut();
     }
+
+    // ==========================================
+    // Data Menu Dropdown Handling
+    // ==========================================
+    function toggleDataDropdown(e) {
+      e.stopPropagation();
+      const menu = document.getElementById('dataDropdownMenu');
+      if (menu) menu.classList.toggle('hidden');
+    }
+
+    document.addEventListener('click', () => {
+      const menu = document.getElementById('dataDropdownMenu');
+      if (menu && !menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+      }
+    });
 
     // Calendar
     function changeMonth(delta) {
@@ -501,7 +649,9 @@
       renderTradesForDate();
     }
 
-    // Trades List with Double-Click Inline Edit
+    // ==========================================
+    // Trades List: Recent First + 3-4 Fields + Expand Arrow
+    // ==========================================
     function renderTradesForDate() {
       const container = document.getElementById('tradesListContainer');
       const trades = tradesData[selectedDateStr] || [];
@@ -518,17 +668,29 @@
       }
 
       container.innerHTML = '';
-      trades.forEach((trade, tradeIdx) => {
+
+      // Recent First (Loop backwards)
+      for (let tradeIdx = trades.length - 1; tradeIdx >= 0; tradeIdx--) {
+        const trade = trades[tradeIdx];
+        const tradeNumber = tradeIdx + 1;
+        const cardKey = `${selectedDateStr}_${tradeIdx}`;
+        const isExpanded = expandedCardKeys.has(cardKey);
+
         const item = document.createElement('div');
         item.className = 'bg-[#0b0f17] border border-slate-800 rounded-xl p-3 text-xs space-y-1.5 hover:border-slate-700 transition';
 
-        let fieldsHtml = '';
-        customFields.forEach(f => {
+        const visibleLimit = 3; // Show 3 fields by default
+        const hasMoreFields = customFields.length > visibleLimit;
+
+        let primaryFieldsHtml = '';
+        let extraFieldsHtml = '';
+
+        customFields.forEach((f, fIdx) => {
           const rawVal = trade[f.id];
           const displayVal = (rawVal !== undefined && rawVal !== '') ? rawVal : '-';
           
-          fieldsHtml += `
-            <div class="flex justify-between items-center py-1 border-b border-slate-800/50 last:border-0 group/field">
+          const rowHtml = `
+            <div class="flex justify-between items-center py-0.5 border-b border-slate-800/40 last:border-0 group/field">
               <span class="text-slate-400 select-none">${f.label}:</span>
               <div 
                 id="val_${selectedDateStr}_${tradeIdx}_${f.id}" 
@@ -541,19 +703,52 @@
               </div>
             </div>
           `;
+
+          if (fIdx < visibleLimit) {
+            primaryFieldsHtml += rowHtml;
+          } else {
+            extraFieldsHtml += rowHtml;
+          }
         });
+
+        let expandBtnHtml = '';
+        if (hasMoreFields) {
+          const hiddenCount = customFields.length - visibleLimit;
+          expandBtnHtml = `
+            <button type="button" onclick="toggleTradeCardExpand('${selectedDateStr}', ${tradeIdx})" class="w-full pt-1.5 text-center text-[11px] text-blue-400 hover:text-blue-300 font-medium flex items-center justify-center gap-1 transition select-none">
+              <span>${isExpanded ? '▲ Show Less' : `▼ Show More (${hiddenCount} more)`}</span>
+            </button>
+          `;
+        }
 
         item.innerHTML = `
           <div class="flex justify-between items-center mb-1.5 pb-1 border-b border-slate-800">
-            <span class="font-semibold text-blue-400 text-xs">Trade #${tradeIdx + 1}</span>
-            <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1">
+            <div class="flex items-center gap-1.5">
+              <span class="font-semibold text-blue-400 text-xs">Trade #${tradeNumber}</span>
+              ${tradeIdx === trades.length - 1 ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded font-medium">Recent</span>' : ''}
+            </div>
+            <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1" title="Delete Trade">
               🗑 Delete
             </button>
           </div>
-          <div class="space-y-0.5">${fieldsHtml}</div>
+          <div class="space-y-0.5">${primaryFieldsHtml}</div>
+          <div id="extra_${cardKey}" class="${isExpanded ? '' : 'hidden'} space-y-0.5 pt-0.5">
+            ${extraFieldsHtml}
+          </div>
+          ${expandBtnHtml}
         `;
         container.appendChild(item);
-      });
+      }
+    }
+
+    function toggleTradeCardExpand(dateKey, tradeIdx) {
+      const cardKey = `${dateKey}_${tradeIdx}`;
+      if (expandedCardKeys.has(cardKey)) {
+        expandedCardKeys.delete(cardKey);
+      } else {
+        expandedCardKeys.add(cardKey);
+      }
+      renderTradesForDate();
     }
 
     // Inline Edit Handler on Double Click
@@ -611,21 +806,41 @@
     }
 
     function finishInlineEdit(dateKey, tradeIdx, fieldId, newVal) {
-      tradesData[dateKey][tradeIdx][fieldId] = newVal.trim();
-      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
-      syncToCloud();
+      const oldVal = tradesData[dateKey][tradeIdx][fieldId];
+      if (oldVal !== newVal.trim()) {
+        pushUndoState('Edit Trade Field');
+        tradesData[dateKey][tradeIdx][fieldId] = newVal.trim();
+        localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+        syncToCloud();
+      }
       renderTradesForDate();
     }
 
-    function deleteTrade(idx) {
-      if (confirm('Delete this trade entry?')) {
-        tradesData[selectedDateStr].splice(idx, 1);
-        if (tradesData[selectedDateStr].length === 0) delete tradesData[selectedDateStr];
-        localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
-        syncToCloud();
-        renderCalendar();
-        renderTradesForDate();
+    // Delete a Trade without browser confirm + instant Undo
+    function deleteTrade(tradeIdx) {
+      pushUndoState('Delete Trade');
+      tradesData[selectedDateStr].splice(tradeIdx, 1);
+      if (tradesData[selectedDateStr].length === 0) delete tradesData[selectedDateStr];
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      syncToCloud();
+      renderCalendar();
+      renderTradesForDate();
+      showToast('Trade entry deleted.', true);
+    }
+
+    // Delete All Data without browser confirm + instant Undo
+    function clearAllDataAction() {
+      if (!tradesData || Object.keys(tradesData).length === 0) {
+        showToast('No trades to delete.');
+        return;
       }
+      pushUndoState('Delete All Trades');
+      tradesData = {};
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      syncToCloud();
+      renderCalendar();
+      renderTradesForDate();
+      showToast('All trade entries deleted.', true);
     }
 
     // ==========================================
@@ -799,6 +1014,7 @@
     }
 
     function saveFinalTrade() {
+      pushUndoState('Add Trade Entry');
       if (!tradesData[selectedDateStr]) {
         tradesData[selectedDateStr] = [];
       }
@@ -809,6 +1025,7 @@
       cancelTradeEntry();
       renderCalendar();
       renderTradesForDate();
+      showToast('✓ Trade saved successfully!');
     }
 
     // ==========================================
@@ -879,7 +1096,6 @@
           </div>
         `;
 
-        // Double Click & Double Tap Rename handlers
         const labelBox = item.querySelector(`#fieldLabelContainer_${idx}`);
         if (labelBox) {
           labelBox.ondblclick = () => startFieldRename(idx);
@@ -907,6 +1123,7 @@
           touchStartThreshold: 3,
           onEnd: function (evt) {
             if (evt.oldIndex !== evt.newIndex) {
+              pushUndoState('Reorder Fields');
               const movedItem = customFields.splice(evt.oldIndex, 1)[0];
               customFields.splice(evt.newIndex, 0, movedItem);
               persistFields();
@@ -934,6 +1151,7 @@
         finished = true;
         const val = input.value.trim();
         if (val && val !== currentLabel) {
+          pushUndoState('Rename Field');
           customFields[idx].label = val;
           persistFields();
           showFieldFeedback('✓ Field Renamed!');
@@ -1010,6 +1228,8 @@
         options = parsed;
       }
 
+      pushUndoState(editingFieldIndex !== null ? 'Update Field' : 'Add Field');
+
       if (editingFieldIndex !== null) {
         customFields[editingFieldIndex].label = label;
         customFields[editingFieldIndex].type = type;
@@ -1042,15 +1262,18 @@
       renderTradesForDate();
     }
 
+    // Remove field without browser confirm + instant Undo
     function removeField(index) {
-      if (confirm(`Remove field "${customFields[index].label}"?`)) {
-        customFields.splice(index, 1);
-        persistFields();
-        if (editingFieldIndex === index) cancelFieldEdit();
-      }
+      pushUndoState('Remove Field');
+      const removed = customFields.splice(index, 1)[0];
+      persistFields();
+      if (editingFieldIndex === index) cancelFieldEdit();
+      showToast(`Field "${removed.label}" removed.`, true);
     }
 
-    // PDF Export
+    // ==========================================
+    // PDF Export, JSON Backup Export & Import
+    // ==========================================
     function exportToPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: 'landscape' });
@@ -1080,7 +1303,7 @@
       });
 
       if (tableRows.length === 0) {
-        alert('No trades to export.');
+        showToast('No trades to export.');
         return;
       }
 
@@ -1095,6 +1318,63 @@
       });
 
       doc.save(`Trading_Journal_${new Date().toISOString().slice(0,10)}.pdf`);
+      showToast('✓ PDF Downloaded!');
+    }
+
+    function exportJSONBackup() {
+      const backupData = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        customFields: customFields,
+        tradesData: tradesData
+      };
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Trading_Journal_Backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('✓ Backup file exported!');
+    }
+
+    function triggerImportFileInput() {
+      document.getElementById('importFileInput').click();
+    }
+
+    function handleImportJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.tradesData || data.customFields) {
+            pushUndoState('Import Backup');
+            if (data.tradesData && typeof data.tradesData === 'object') {
+              tradesData = data.tradesData;
+            }
+            if (data.customFields && Array.isArray(data.customFields) && data.customFields.length > 0) {
+              customFields = data.customFields;
+            }
+            localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+            localStorage.setItem(STORAGE_KEY_FIELDS, JSON.stringify(customFields));
+            syncToCloud();
+            renderCalendar();
+            renderTradesForDate();
+            renderFieldsList();
+            showToast('✓ Backup imported successfully!', true);
+          } else {
+            alert('Invalid backup file structure.');
+          }
+        } catch (err) {
+          alert('Error parsing JSON backup: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
     }
 
     init();
