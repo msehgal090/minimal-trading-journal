@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minimal Trading Journal</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- jsPDF & AutoTable for PDF Download -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bgDark: '#0b0f17',
+            cardDark: '#131b2a',
+            borderDark: '#1e293b'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .step-card-anim {
+      animation: slideIn 0.2s ease-out forwards;
+    }
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.8);
+      cursor: pointer;
+    }
+    .drag-handle {
+      cursor: grab;
+      user-select: none;
+    }
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+    .dragging {
+      opacity: 0.4;
+      border: 1px dashed #3b82f6 !important;
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f17] text-slate-100 min-h-screen font-sans antialiased p-3 sm:p-6 md:p-8">
+
+  <!-- Header Bar -->
+  <div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 pb-5 border-b border-slate-800">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+        <span class="text-blue-500">📈</span> Minimal Trading Journal
+      </h1>
+      <p class="text-xs text-slate-400 mt-0.5">Discipline • Data • Growth</p>
+    </div>
+    
+    <div class="flex items-center gap-2.5">
+      <button onclick="openConfigModal()" class="text-xs bg-slate-800/90 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+        <span>⚙️</span> Manage Fields
+      </button>
+      <button onclick="exportToPDF()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-md">
+        <span>📥</span> Download PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 mt-6">
+    
+    <!-- Left Column: Calendar (7 cols on md) -->
+    <div class="md:col-span-7 bg-[#131b2a] border border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 id="calendarMonthYear" class="font-semibold text-lg text-white"></h2>
+        <div class="flex items-center gap-1">
+          <button onclick="changeMonth(-1)" class="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+            ◀
+          </button>
+          <button onclick="goToToday()" class="text-xs px-2.5 py-1 bg-slate-800/60 hover:bg-slate-800 text-slate-300 rounded-md border border-slate-700/60 transition">
+            Today
+          </button>
+          <button onclick="changeMonth(1)" class="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+            ▶
+          </button>
+        </div>
+      </div>
+
+      <!-- Days Header -->
+      <div class="grid grid-cols-7 text-center text-xs text-slate-400 font-medium py-1 mb-2">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+
+      <!-- Calendar Days Grid -->
+      <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-sm">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Right Column: Date Details & Single-Field Logger (5 cols on md) -->
+    <div class="md:col-span-5 flex flex-col gap-5">
+      
+      <!-- Selected Date Card -->
+      <div class="bg-[#131b2a] border border-slate-800/80 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div>
+            <span class="text-[11px] uppercase tracking-wider text-slate-400">Selected Date</span>
+            <div id="selectedDateText" class="text-base font-semibold text-white">--</div>
+          </div>
+          <button id="addTradeBtn" onclick="startNewTradeEntry()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5 py-1.5 rounded-lg transition shadow">
+            + New Trade
+          </button>
+        </div>
+
+        <!-- Single Step-by-Step Entry View (Card) -->
+        <div id="entryContainer" class="hidden mt-4 flex-1 flex flex-col justify-between">
+          <div>
+            <!-- Header of Step: Step X of Y + Cancel -->
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+              <span id="stepCounterBadge" class="text-xs font-semibold text-blue-400 tracking-wide uppercase">
+                Step 1 of 5
+              </span>
+              <button onclick="cancelTradeEntry()" class="text-xs text-slate-400 hover:text-rose-400 transition">
+                ✕ Cancel
+              </button>
+            </div>
+
+            <!-- Single Active Field Box -->
+            <div id="activeFieldCard" class="step-card-anim mt-3 bg-[#0b0f17] border border-slate-800 p-4 rounded-xl space-y-3">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Action Buttons -->
+          <div class="mt-5 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+            <button id="btnPrevStep" onclick="goToPreviousStep()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-3.5 py-2 rounded-lg transition">
+              ← Back
+            </button>
+            
+            <button id="btnNextStep" onclick="submitCurrentStep()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg transition shadow">
+              Next →
+            </button>
+          </div>
+        </div>
+
+        <!-- List of Trades for Selected Date -->
+        <div id="tradesListContainer" class="mt-4 flex-1 overflow-y-auto max-h-[380px] pr-1 space-y-2.5">
+          <!-- Rendered via JS -->
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Manage Fields Modal -->
+  <div id="fieldsModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-[#131b2a] border border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>⚙️</span> Manage Trade Fields
+        </h3>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+
+      <!-- Add / Edit Field Form -->
+      <div id="fieldFormBox" class="mt-4 bg-[#0b0f17] p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span id="formActionLabel" class="text-xs font-semibold text-slate-300">Add Field</span>
+          <button id="btnCancelEdit" onclick="cancelFieldEdit()" class="hidden text-[11px] text-slate-400 hover:text-rose-400">Cancel Edit</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input id="newFieldName" type="text" placeholder="Field Name" class="bg-[#131b2a] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />
+          <select id="newFieldType" onchange="toggleDropdownOptionsInput()" class="bg-[#131b2a] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none">
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="time">Time</option>
+            <option value="dropdown">Dropdown</option>
+          </select>
+        </div>
+        <div id="dropdownOptionsRow" class="hidden">
+          <input id="newFieldOptions" type="text" placeholder="Options (e.g. BUY, SELL)" class="w-full bg-[#131b2a] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />
+        </div>
+        <button id="btnSaveField" onclick="saveField()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2 rounded-lg transition">
+          + Add Field
+        </button>
+      </div>
+
+      <!-- Drag & Drop Fields List -->
+      <div class="mt-4 flex-1 overflow-y-auto pr-1">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Field Flow (Drag to reorder)</span>
+        </div>
+        <div id="fieldsList" class="mt-2 space-y-2">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-800 flex justify-end">
+        <button onclick="closeConfigModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium px-4 py-2 rounded-lg transition">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP JAVASCRIPT LOGIC -->
+  <script>
+    const STORAGE_KEY_FIELDS = 'mtj_custom_fields';
+    const STORAGE_KEY_TRADES = 'mtj_trades_data';
+
+    // Default Starter Fields
+    const defaultFields = [
+      { id: 'f_1', label: 'Symbol / Stock', type: 'text' },
+      { id: 'f_2', label: 'Trade Type', type: 'dropdown', options: ['BUY', 'SELL'] },
+      { id: 'f_3', label: 'Trade Time', type: 'time' },
+      { id: 'f_4', label: 'Entry Price', type: 'number' },
+      { id: 'f_5', label: 'Exit Price', type: 'number' },
+      { id: 'f_6', label: 'Net P&L', type: 'number' },
+      { id: 'f_7', label: 'Setup / Mistake Note', type: 'text' }
+    ];
+
+    // State
+    let currentDate = new Date();
+    let selectedDateStr = formatDateKey(new Date());
+    let customFields = [];
+    let tradesData = {};
+    
+    let currentStepIndex = 0;
+    let tempTradeValues = {};
+    let editingFieldIndex = null;
+    let draggedItemIndex = null;
+
+    function formatDateKey(d) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function init() {
+      const savedFields = localStorage.getItem(STORAGE_KEY_FIELDS);
+      if (savedFields) {
+        try { customFields = JSON.parse(savedFields); } catch(e) { customFields = defaultFields; }
+      } else {
+        customFields = defaultFields;
+        localStorage.setItem(STORAGE_KEY_FIELDS, JSON.stringify(customFields));
+      }
+
+      const savedTrades = localStorage.getItem(STORAGE_KEY_TRADES);
+      if (savedTrades) {
+        try { tradesData = JSON.parse(savedTrades); } catch(e) { tradesData = {}; }
+      }
+
+      renderCalendar();
+      selectDate(selectedDateStr);
+    }
+
+    // Calendar
+    function changeMonth(delta) {
+      currentDate.setMonth(currentDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function goToToday() {
+      currentDate = new Date();
+      selectedDateStr = formatDateKey(currentDate);
+      renderCalendar();
+      selectDate(selectedDateStr);
+    }
+
+    function renderCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ];
+      document.getElementById('calendarMonthYear').innerText = `${monthNames[month]} ${year}`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayStr = formatDateKey(new Date());
+
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = '';
+
+      for (let i = 0; i < firstDay; i++) {
+        const blank = document.createElement('div');
+        blank.className = 'h-13 sm:h-16 rounded-xl border border-transparent';
+        grid.appendChild(blank);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const thisDate = new Date(year, month, day);
+        const dateKey = formatDateKey(thisDate);
+        const hasTrades = tradesData[dateKey] && tradesData[dateKey].length > 0;
+        const isToday = dateKey === todayStr;
+        const isSelected = dateKey === selectedDateStr;
+
+        const cell = document.createElement('div');
+        cell.className = `relative h-13 sm:h-16 p-2 rounded-xl border cursor-pointer transition flex flex-col justify-between select-none
+          ${isSelected ? 'bg-blue-600/25 border-blue-500 text-white font-semibold shadow' : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-300'}
+          ${isToday && !isSelected ? 'border-amber-400/80 text-amber-300 font-medium' : ''}
+        `;
+
+        cell.onclick = () => selectDate(dateKey);
+
+        const topRow = document.createElement('div');
+        topRow.className = 'flex justify-between items-center text-xs';
+        topRow.innerHTML = `<span>${day}</span>${isToday ? '<span class="text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded font-medium">Today</span>' : ''}`;
+        cell.appendChild(topRow);
+
+        if (hasTrades) {
+          const count = tradesData[dateKey].length;
+          const indicator = document.createElement('div');
+          indicator.className = 'flex items-center gap-1';
+          indicator.innerHTML = `
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span class="text-[10px] text-slate-400 font-mono">${count}</span>
+          `;
+          cell.appendChild(indicator);
+        }
+
+        grid.appendChild(cell);
+      }
+    }
+
+    function selectDate(dateKey) {
+      selectedDateStr = dateKey;
+      document.getElementById('selectedDateText').innerText = new Date(dateKey + 'T00:00:00').toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+      });
+      renderCalendar();
+      cancelTradeEntry();
+      renderTradesForDate();
+    }
+
+    // Trades List with Double-Click Inline Edit
+    function renderTradesForDate() {
+      const container = document.getElementById('tradesListContainer');
+      const trades = tradesData[selectedDateStr] || [];
+
+      if (trades.length === 0) {
+        container.innerHTML = `
+          <div class="text-xs text-slate-500 text-center py-10 flex flex-col items-center justify-center">
+            <span class="text-2xl mb-1">📝</span>
+            <span>No trades for this date.</span>
+            <span class="text-slate-600 text-[11px] mt-1">Tap "+ New Trade" above to log one.</span>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = '';
+      trades.forEach((trade, tradeIdx) => {
+        const item = document.createElement('div');
+        item.className = 'bg-[#0b0f17] border border-slate-800 rounded-xl p-3 text-xs space-y-1.5 hover:border-slate-700 transition';
+
+        let fieldsHtml = '';
+        customFields.forEach(f => {
+          const rawVal = trade[f.id];
+          const displayVal = (rawVal !== undefined && rawVal !== '') ? rawVal : '-';
+          
+          fieldsHtml += `
+            <div class="flex justify-between items-center py-1 border-b border-slate-800/50 last:border-0 group/field">
+              <span class="text-slate-400 select-none">${f.label}:</span>
+              <div 
+                id="val_${selectedDateStr}_${tradeIdx}_${f.id}" 
+                ondblclick="startInlineEdit('${selectedDateStr}', ${tradeIdx}, '${f.id}')"
+                title="Double click to edit"
+                class="font-medium text-slate-200 cursor-pointer px-1.5 py-0.5 rounded hover:bg-slate-800/80 transition flex items-center gap-1"
+              >
+                <span>${displayVal}</span>
+                <span class="opacity-0 group-hover/field:opacity-40 text-[10px]">✎</span>
+              </div>
+            </div>
+          `;
+        });
+
+        item.innerHTML = `
+          <div class="flex justify-between items-center mb-1.5 pb-1 border-b border-slate-800">
+            <span class="font-semibold text-blue-400 text-xs">Trade #${tradeIdx + 1}</span>
+            <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1">
+              🗑 Delete
+            </button>
+          </div>
+          <div class="space-y-0.5">${fieldsHtml}</div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    // Inline Edit Handler on Double Click
+    function startInlineEdit(dateKey, tradeIdx, fieldId) {
+      const containerId = `val_${dateKey}_${tradeIdx}_${fieldId}`;
+      const containerEl = document.getElementById(containerId);
+      if (!containerEl || containerEl.querySelector('input, select')) return;
+
+      const field = customFields.find(f => f.id === fieldId);
+      if (!field) return;
+
+      const currentVal = tradesData[dateKey][tradeIdx][fieldId] || '';
+
+      containerEl.innerHTML = '';
+      containerEl.className = 'font-medium text-slate-200';
+
+      let inputEl;
+
+      if (field.type === 'dropdown') {
+        inputEl = document.createElement('select');
+        inputEl.className = 'bg-[#131b2a] border border-blue-500 text-xs text-white rounded px-1.5 py-0.5 outline-none';
+        
+        let optHtml = `<option value="">--</option>`;
+        (field.options || []).forEach(opt => {
+          optHtml += `<option value="${opt}" ${currentVal === opt ? 'selected' : ''}>${opt}</option>`;
+        });
+        inputEl.innerHTML = optHtml;
+
+        inputEl.onchange = () => finishInlineEdit(dateKey, tradeIdx, fieldId, inputEl.value);
+        inputEl.onblur = () => finishInlineEdit(dateKey, tradeIdx, fieldId, inputEl.value);
+
+      } else {
+        inputEl = document.createElement('input');
+        inputEl.type = field.type === 'time' ? 'time' : (field.type === 'number' ? 'number' : 'text');
+        if (field.type === 'number') inputEl.step = 'any';
+        inputEl.value = currentVal;
+        inputEl.className = 'bg-[#131b2a] border border-blue-500 text-xs text-white rounded px-2 py-0.5 outline-none w-28 sm:w-36';
+
+        inputEl.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            finishInlineEdit(dateKey, tradeIdx, fieldId, inputEl.value);
+          } else if (e.key === 'Escape') {
+            renderTradesForDate();
+          }
+        };
+
+        inputEl.onblur = () => {
+          finishInlineEdit(dateKey, tradeIdx, fieldId, inputEl.value);
+        };
+      }
+
+      containerEl.appendChild(inputEl);
+      inputEl.focus();
+    }
+
+    function finishInlineEdit(dateKey, tradeIdx, fieldId, newVal) {
+      tradesData[dateKey][tradeIdx][fieldId] = newVal.trim();
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      renderTradesForDate();
+    }
+
+    function deleteTrade(idx) {
+      if (confirm('Delete this trade entry?')) {
+        tradesData[selectedDateStr].splice(idx, 1);
+        if (tradesData[selectedDateStr].length === 0) delete tradesData[selectedDateStr];
+        localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+        renderCalendar();
+        renderTradesForDate();
+      }
+    }
+
+    // ==========================================
+    // Single-Field-At-A-Time Step Logger
+    // ==========================================
+    function startNewTradeEntry() {
+      if (!customFields || customFields.length === 0) {
+        alert('Please add at least one field first using "Manage Fields".');
+        openConfigModal();
+        return;
+      }
+
+      currentStepIndex = 0;
+      tempTradeValues = {};
+      openEntryView();
+      renderSingleStepField();
+    }
+
+    function openEntryView() {
+      document.getElementById('entryContainer').classList.remove('hidden');
+      document.getElementById('tradesListContainer').classList.add('hidden');
+      document.getElementById('addTradeBtn').classList.add('hidden');
+    }
+
+    function cancelTradeEntry() {
+      document.getElementById('entryContainer').classList.add('hidden');
+      document.getElementById('tradesListContainer').classList.remove('hidden');
+      document.getElementById('addTradeBtn').classList.remove('hidden');
+      currentStepIndex = 0;
+      tempTradeValues = {};
+    }
+
+    function renderSingleStepField() {
+      const field = customFields[currentStepIndex];
+      const totalSteps = customFields.length;
+      const isLastStep = currentStepIndex === totalSteps - 1;
+
+      document.getElementById('stepCounterBadge').innerText = `Step ${currentStepIndex + 1} of ${totalSteps}`;
+
+      document.getElementById('btnPrevStep').style.visibility = currentStepIndex === 0 ? 'hidden' : 'visible';
+      
+      const nextBtn = document.getElementById('btnNextStep');
+      if (isLastStep) {
+        nextBtn.innerText = '✓ Submit Trade';
+        nextBtn.className = 'text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg transition shadow';
+      } else {
+        nextBtn.innerText = 'Next →';
+        nextBtn.className = 'text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-lg transition shadow';
+      }
+
+      const container = document.getElementById('activeFieldCard');
+      const val = tempTradeValues[field.id] || '';
+
+      let inputHtml = '';
+      if (field.type === 'dropdown') {
+        const optionsList = field.options || [];
+        let optHtml = `<option value="">-- Select --</option>`;
+        optionsList.forEach(opt => {
+          optHtml += `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`;
+        });
+
+        inputHtml = `
+          <select id="activeStepInput" class="w-full bg-[#131b2a] border border-slate-700 text-sm text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500">
+            ${optHtml}
+          </select>
+        `;
+      } else if (field.type === 'time') {
+        inputHtml = `
+          <input id="activeStepInput" type="time" value="${val}" class="w-full bg-[#131b2a] border border-slate-700 text-sm text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" />
+        `;
+      } else if (field.type === 'number') {
+        inputHtml = `
+          <input id="activeStepInput" type="number" step="any" placeholder="Enter number..." value="${val}" class="w-full bg-[#131b2a] border border-slate-700 text-sm text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" />
+        `;
+      } else {
+        inputHtml = `
+          <input id="activeStepInput" type="text" placeholder="Enter ${field.label}..." value="${val}" class="w-full bg-[#131b2a] border border-slate-700 text-sm text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500" />
+        `;
+      }
+
+      container.innerHTML = `
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-[11px] text-slate-400 uppercase tracking-wider">Field ${currentStepIndex + 1}</div>
+              <label class="block text-sm font-semibold text-white mt-0.5">${field.label}</label>
+            </div>
+            <button type="button" onclick="skipCurrentStep()" class="text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800/80 transition" title="Skip">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+                <polyline points="15 18 21 12 15 6"></polyline>
+              </svg>
+            </button>
+          </div>
+          ${inputHtml}
+        </div>
+      `;
+
+      const inputEl = document.getElementById('activeStepInput');
+      if (inputEl) {
+        inputEl.focus();
+        if (field.type === 'dropdown') {
+          inputEl.onchange = (e) => {
+            if (e.target.value.trim() !== '') {
+              submitCurrentStep();
+            }
+          };
+        }
+        if (field.type === 'time') {
+          let hasAutoAdvanced = false;
+          const advanceIfValid = () => {
+            if (!hasAutoAdvanced && inputEl.value.trim() !== '') {
+              hasAutoAdvanced = true;
+              submitCurrentStep();
+            }
+          };
+          inputEl.onchange = advanceIfValid;
+          inputEl.onblur = (e) => {
+            if (e.relatedTarget && (e.relatedTarget.id === 'btnPrevStep' || e.relatedTarget.closest('button'))) {
+              return;
+            }
+            advanceIfValid();
+          };
+        }
+        inputEl.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitCurrentStep();
+          }
+        };
+      }
+    }
+
+    function saveCurrentFieldVal() {
+      const field = customFields[currentStepIndex];
+      const inputEl = document.getElementById('activeStepInput');
+      if (inputEl) {
+        tempTradeValues[field.id] = inputEl.value.trim();
+      }
+    }
+
+    function submitCurrentStep() {
+      saveCurrentFieldVal();
+
+      if (currentStepIndex < customFields.length - 1) {
+        currentStepIndex++;
+        renderSingleStepField();
+      } else {
+        saveFinalTrade();
+      }
+    }
+
+    function skipCurrentStep() {
+      const field = customFields[currentStepIndex];
+      tempTradeValues[field.id] = '';
+
+      if (currentStepIndex < customFields.length - 1) {
+        currentStepIndex++;
+        renderSingleStepField();
+      } else {
+        saveFinalTrade();
+      }
+    }
+
+    function goToPreviousStep() {
+      saveCurrentFieldVal();
+      if (currentStepIndex > 0) {
+        currentStepIndex--;
+        renderSingleStepField();
+      }
+    }
+
+    function saveFinalTrade() {
+      if (!tradesData[selectedDateStr]) {
+        tradesData[selectedDateStr] = [];
+      }
+
+      tradesData[selectedDateStr].push({ ...tempTradeValues });
+      localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
+      cancelTradeEntry();
+      renderCalendar();
+      renderTradesForDate();
+    }
+
+    // ==========================================
+    // Fields Customizer (Drag to Reorder, Edit, Add)
+    // ==========================================
+    function openConfigModal() {
+      cancelFieldEdit();
+      renderFieldsList();
+      document.getElementById('fieldsModal').classList.remove('hidden');
+    }
+
+    function closeConfigModal() {
+      document.getElementById('fieldsModal').classList.add('hidden');
+    }
+
+    function toggleDropdownOptionsInput() {
+      const type = document.getElementById('newFieldType').value;
+      const optRow = document.getElementById('dropdownOptionsRow');
+      if (type === 'dropdown') optRow.classList.remove('hidden');
+      else optRow.classList.add('hidden');
+    }
+
+    function renderFieldsList() {
+      const container = document.getElementById('fieldsList');
+      container.innerHTML = '';
+
+      if (customFields.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-500 py-3 text-center">No fields yet.</div>';
+        return;
+      }
+
+      customFields.forEach((f, idx) => {
+        const item = document.createElement('div');
+        item.draggable = true;
+        item.dataset.index = idx;
+        item.className = 'flex items-center justify-between bg-[#0b0f17] border border-slate-800 p-2.5 rounded-xl text-xs hover:border-slate-700 transition select-none';
+
+        // Drag & Drop event listeners
+        item.addEventListener('dragstart', (e) => {
+          draggedItemIndex = idx;
+          item.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          draggedItemIndex = null;
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          if (draggedItemIndex !== null && draggedItemIndex !== idx) {
+            const movedItem = customFields.splice(draggedItemIndex, 1)[0];
+            customFields.splice(idx, 0, movedItem);
+            persistFields();
+          }
+        });
+
+        let details = f.type.toUpperCase();
+        if (f.type === 'dropdown' && f.options) {
+          details += `: ${f.options.join(', ')}`;
+        }
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2.5 flex-1 pr-2">
+            <span class="drag-handle text-slate-500 hover:text-slate-300 text-sm font-mono px-1 py-0.5 rounded" title="Drag to reorder">⋮⋮</span>
+            <span class="font-bold text-blue-400">${idx + 1}.</span>
+            <span class="font-semibold text-slate-100">${f.label}</span>
+            <span class="text-[10px] text-slate-500">(${details})</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="editField(${idx})" class="hover:bg-slate-800 text-blue-400 p-1.5 rounded" title="Edit Field">
+              ✏️
+            </button>
+            <button onclick="removeField(${idx})" class="hover:bg-slate-800 text-rose-400 p-1.5 rounded" title="Delete Field">
+              🗑
+            </button>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function editField(idx) {
+      editingFieldIndex = idx;
+      const f = customFields[idx];
+      document.getElementById('newFieldName').value = f.label;
+      document.getElementById('newFieldType').value = f.type;
+      
+      toggleDropdownOptionsInput();
+      if (f.type === 'dropdown') {
+        document.getElementById('newFieldOptions').value = (f.options || []).join(', ');
+      }
+
+      document.getElementById('formActionLabel').innerText = `Edit Field #${idx + 1}`;
+      document.getElementById('btnSaveField').innerText = '✓ Update Field';
+      document.getElementById('btnCancelEdit').classList.remove('hidden');
+    }
+
+    function cancelFieldEdit() {
+      editingFieldIndex = null;
+      document.getElementById('newFieldName').value = '';
+      document.getElementById('newFieldType').value = 'text';
+      document.getElementById('newFieldOptions').value = '';
+      toggleDropdownOptionsInput();
+
+      document.getElementById('formActionLabel').innerText = 'Add Field';
+      document.getElementById('btnSaveField').innerText = '+ Add Field';
+      document.getElementById('btnCancelEdit').classList.add('hidden');
+    }
+
+    function saveField() {
+      const nameInput = document.getElementById('newFieldName');
+      const typeSelect = document.getElementById('newFieldType');
+      const optInput = document.getElementById('newFieldOptions');
+
+      const label = nameInput.value.trim();
+      const type = typeSelect.value;
+
+      if (!label) {
+        alert('Please enter a field name.');
+        return;
+      }
+
+      let options = undefined;
+      if (type === 'dropdown') {
+        options = optInput.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        if (options.length === 0) {
+          alert('Please enter options separated by comma.');
+          return;
+        }
+      }
+
+      if (editingFieldIndex !== null) {
+        customFields[editingFieldIndex].label = label;
+        customFields[editingFieldIndex].type = type;
+        customFields[editingFieldIndex].options = options;
+      } else {
+        const newField = {
+          id: 'f_' + Date.now(),
+          label: label,
+          type: type,
+          options: options
+        };
+        customFields.push(newField);
+      }
+
+      persistFields();
+      cancelFieldEdit();
+    }
+
+    function persistFields() {
+      localStorage.setItem(STORAGE_KEY_FIELDS, JSON.stringify(customFields));
+      renderFieldsList();
+      renderTradesForDate();
+    }
+
+    function removeField(index) {
+      if (confirm(`Remove field "${customFields[index].label}"?`)) {
+        customFields.splice(index, 1);
+        persistFields();
+        if (editingFieldIndex === index) cancelFieldEdit();
+      }
+    }
+
+    // PDF Export
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape' });
+
+      doc.setFontSize(16);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Minimal Trading Journal Report", 14, 16);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 23);
+
+      const tableHeaders = ['Date', ...customFields.map(f => f.label)];
+      const tableRows = [];
+
+      const sortedDates = Object.keys(tradesData).sort();
+
+      sortedDates.forEach(date => {
+        const trades = tradesData[date];
+        trades.forEach(t => {
+          const row = [date];
+          customFields.forEach(f => {
+            row.push(t[f.id] || '-');
+          });
+          tableRows.push(row);
+        });
+      });
+
+      if (tableRows.length === 0) {
+        alert('No trades to export.');
+        return;
+      }
+
+      doc.autoTable({
+        head: [tableHeaders],
+        body: tableRows,
+        startY: 28,
+        theme: 'striped',
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
+        styles: { fontSize: 9, cellPadding: 3 },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
+      });
+
+      doc.save(`Trading_Journal_${new Date().toISOString().slice(0,10)}.pdf`);
+    }
+
+    init();
+  </script>
+</body>
+</html>
