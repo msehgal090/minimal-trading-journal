@@ -861,13 +861,15 @@
         }
 
         item.innerHTML = `
-          <div class="flex items-center gap-2 flex-1 pr-2">
-            <span class="drag-handle text-slate-400 hover:text-white text-base px-2 py-1 rounded cursor-grab active:cursor-grabbing" title="Drag to reorder">⋮⋮</span>
-            <span class="font-bold text-blue-400 field-idx">${idx + 1}.</span>
-            <span class="font-semibold text-slate-100">${f.label}</span>
-            <span class="text-[10px] text-slate-500">(${details})</span>
+          <div class="flex items-center gap-2 flex-1 pr-2 min-w-0">
+            <span class="drag-handle text-slate-400 hover:text-white text-base px-2 py-1 rounded cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder">⋮⋮</span>
+            <span class="font-bold text-blue-400 field-idx shrink-0">${idx + 1}.</span>
+            <div id="fieldLabelContainer_${idx}" class="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer" title="Double tap to rename">
+              <span id="fieldLabelText_${idx}" class="font-semibold text-slate-100 truncate hover:text-blue-300 transition">${f.label}</span>
+              <span class="text-[10px] text-slate-500 shrink-0">(${details})</span>
+            </div>
           </div>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 shrink-0">
             <button type="button" onclick="editField(${idx})" class="hover:bg-slate-800 text-blue-400 p-1.5 rounded" title="Edit Field">
               ✏️
             </button>
@@ -876,6 +878,22 @@
             </button>
           </div>
         `;
+
+        // Double Click & Double Tap Rename handlers
+        const labelBox = item.querySelector(`#fieldLabelContainer_${idx}`);
+        if (labelBox) {
+          labelBox.ondblclick = () => startFieldRename(idx);
+          let lastTap = 0;
+          labelBox.ontouchend = (e) => {
+            const now = Date.now();
+            if (now - lastTap < 350 && now - lastTap > 0) {
+              e.preventDefault();
+              startFieldRename(idx);
+            }
+            lastTap = now;
+          };
+        }
+
         container.appendChild(item);
       });
 
@@ -896,6 +914,49 @@
           }
         });
       }
+    }
+
+    function startFieldRename(idx) {
+      const container = document.getElementById(`fieldLabelContainer_${idx}`);
+      if (!container || container.querySelector('input')) return;
+
+      const currentLabel = customFields[idx].label;
+      container.innerHTML = '';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = currentLabel;
+      input.className = 'bg-[#131b2a] border border-blue-500 text-xs text-white rounded px-2 py-0.5 outline-none font-semibold w-36 sm:w-48';
+
+      let finished = false;
+      const done = () => {
+        if (finished) return;
+        finished = true;
+        const val = input.value.trim();
+        if (val && val !== currentLabel) {
+          customFields[idx].label = val;
+          persistFields();
+          showFieldFeedback('✓ Field Renamed!');
+        } else {
+          renderFieldsList();
+        }
+      };
+
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          done();
+        } else if (e.key === 'Escape') {
+          finished = true;
+          renderFieldsList();
+        }
+      };
+
+      input.onblur = done;
+
+      container.appendChild(input);
+      input.focus();
+      input.select();
     }
 
     function editField(idx) {
