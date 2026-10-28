@@ -900,15 +900,36 @@
       let inputHtml = '';
       if (field.type === 'dropdown') {
         const optionsList = field.options || [];
-        let optHtml = `<option value="">-- Select --</option>`;
+        
+        let chipsHtml = '';
+        if (optionsList.length > 0) {
+          chipsHtml = `
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+              ${optionsList.map((opt) => {
+                const escapedOpt = opt.replace(/'/g, "\\'");
+                const isSelected = val === opt;
+                return `
+                  <button type="button" onclick="selectDropdownChip('${escapedOpt}')" class="p-2.5 rounded-xl border ${isSelected ? 'bg-blue-600/30 border-blue-500 text-white font-semibold' : 'bg-[#131b2a] border-slate-700/80 hover:border-blue-500 text-slate-200'} text-xs text-center transition hover:bg-slate-800 flex items-center justify-center gap-1 active:scale-95 shadow-sm">
+                    <span>${opt}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        let optHtml = `<option value="">-- Choose Option --</option>`;
         optionsList.forEach(opt => {
           optHtml += `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`;
         });
 
         inputHtml = `
-          <select id="activeStepInput" class="w-full bg-[#131b2a] border border-slate-700 text-sm text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500">
-            ${optHtml}
-          </select>
+          <div class="space-y-2.5">
+            ${chipsHtml}
+            <select id="activeStepInput" class="w-full bg-[#131b2a] border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500">
+              ${optHtml}
+            </select>
+          </div>
         `;
       } else if (field.type === 'time') {
         inputHtml = `
@@ -951,8 +972,14 @@
               submitCurrentStep();
             }
           };
+          setTimeout(() => {
+            try { if (inputEl.showPicker) inputEl.showPicker(); } catch (err) {}
+          }, 60);
         }
         if (field.type === 'time') {
+          setTimeout(() => {
+            try { if (inputEl.showPicker) inputEl.showPicker(); } catch (err) {}
+          }, 60);
           let hasAutoAdvanced = false;
           const advanceIfValid = () => {
             if (!hasAutoAdvanced && inputEl.value.trim() !== '') {
@@ -975,6 +1002,12 @@
           }
         };
       }
+    }
+
+    function selectDropdownChip(opt) {
+      const field = customFields[currentStepIndex];
+      tempTradeValues[field.id] = opt;
+      submitCurrentStep();
     }
 
     function saveCurrentFieldVal() {
