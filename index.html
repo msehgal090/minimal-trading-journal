@@ -94,7 +94,7 @@
             </div>
             <div class="border-t border-slate-800 my-1"></div>
             <button onclick="promptAddNewAccount()" class="w-full text-left px-3 py-2 text-blue-400 hover:bg-slate-800 flex items-center gap-2 transition font-medium">
-              <span>➕</span> Add Account (e.g. XM)
+              <span>➕</span> Add Account
             </button>
           </div>
         </div>
@@ -511,7 +511,7 @@
     }
 
     function promptAddNewAccount() {
-      const name = prompt('Enter New Account Name (e.g. XM, Funding Pips, Personal):');
+      const name = prompt('Enter Account Name:');
       if (!name || !name.trim()) return;
       
       const newAcc = {
