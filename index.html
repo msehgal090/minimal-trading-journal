@@ -487,7 +487,7 @@
           tradesData: cleanTrades,
           customFields: cleanFields,
           lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })
+        })
         .then(() => {
           updateSyncBadge(true);
         })
@@ -818,9 +818,12 @@
 
     // Delete a Trade without browser confirm + instant Undo
     function deleteTrade(tradeIdx) {
+      if (!tradesData[selectedDateStr] || tradesData[selectedDateStr][tradeIdx] === undefined) return;
       pushUndoState('Delete Trade');
       tradesData[selectedDateStr].splice(tradeIdx, 1);
-      if (tradesData[selectedDateStr].length === 0) delete tradesData[selectedDateStr];
+      if (tradesData[selectedDateStr].length === 0) {
+        delete tradesData[selectedDateStr];
+      }
       localStorage.setItem(STORAGE_KEY_TRADES, JSON.stringify(tradesData));
       syncToCloud();
       renderCalendar();
