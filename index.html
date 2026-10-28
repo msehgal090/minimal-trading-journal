@@ -994,11 +994,20 @@
     function selectDropdownChip(opt) {
       const field = customFields[currentStepIndex];
       tempTradeValues[field.id] = opt;
-      submitCurrentStep();
+      const inputEl = document.getElementById('activeStepInput');
+      if (inputEl) inputEl.value = opt;
+
+      if (currentStepIndex < customFields.length - 1) {
+        currentStepIndex++;
+        renderSingleStepField();
+      } else {
+        saveFinalTrade();
+      }
     }
 
     function saveCurrentFieldVal() {
       const field = customFields[currentStepIndex];
+      if (field && field.type === 'dropdown') return;
       const inputEl = document.getElementById('activeStepInput');
       if (inputEl) {
         tempTradeValues[field.id] = inputEl.value.trim();
