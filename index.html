@@ -904,31 +904,26 @@
         let chipsHtml = '';
         if (optionsList.length > 0) {
           chipsHtml = `
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
               ${optionsList.map((opt) => {
                 const escapedOpt = opt.replace(/'/g, "\\'");
                 const isSelected = val === opt;
                 return `
-                  <button type="button" onclick="selectDropdownChip('${escapedOpt}')" class="p-2.5 rounded-xl border ${isSelected ? 'bg-blue-600/30 border-blue-500 text-white font-semibold' : 'bg-[#131b2a] border-slate-700/80 hover:border-blue-500 text-slate-200'} text-xs text-center transition hover:bg-slate-800 flex items-center justify-center gap-1 active:scale-95 shadow-sm">
+                  <button type="button" onclick="selectDropdownChip('${escapedOpt}')" class="p-3 rounded-xl border ${isSelected ? 'bg-blue-600/30 border-blue-500 text-white font-semibold' : 'bg-[#131b2a] border-slate-700/80 hover:border-blue-500 text-slate-200'} text-xs font-medium text-center transition hover:bg-slate-800 flex items-center justify-center gap-1 active:scale-95 shadow-sm">
                     <span>${opt}</span>
                   </button>
                 `;
               }).join('')}
             </div>
           `;
+        } else {
+          chipsHtml = `<div class="text-xs text-slate-500 py-3 text-center">No options set for this field.</div>`;
         }
 
-        let optHtml = `<option value="">-- Choose Option --</option>`;
-        optionsList.forEach(opt => {
-          optHtml += `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`;
-        });
-
         inputHtml = `
-          <div class="space-y-2.5">
+          <div>
             ${chipsHtml}
-            <select id="activeStepInput" class="w-full bg-[#131b2a] border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500">
-              ${optHtml}
-            </select>
+            <input type="hidden" id="activeStepInput" value="${val}" />
           </div>
         `;
       } else if (field.type === 'time') {
@@ -965,16 +960,8 @@
 
       const inputEl = document.getElementById('activeStepInput');
       if (inputEl) {
-        inputEl.focus();
-        if (field.type === 'dropdown') {
-          inputEl.onchange = (e) => {
-            if (e.target.value.trim() !== '') {
-              submitCurrentStep();
-            }
-          };
-          setTimeout(() => {
-            try { if (inputEl.showPicker) inputEl.showPicker(); } catch (err) {}
-          }, 60);
+        if (field.type !== 'dropdown') {
+          inputEl.focus();
         }
         if (field.type === 'time') {
           setTimeout(() => {
