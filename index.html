@@ -939,24 +939,31 @@
         const visibleLimit = 3;
         const hasMoreFields = customFields.length > visibleLimit;
 
+        // Check if trade has any skipped/empty fields
+        const skippedFieldsCount = customFields.filter(f => trade[f.id] === undefined || trade[f.id] === null || String(trade[f.id]).trim() === '').length;
+
         let primaryFieldsHtml = '';
         let extraFieldsHtml = '';
 
         customFields.forEach((f, fIdx) => {
           const rawVal = trade[f.id];
-          const displayVal = (rawVal !== undefined && rawVal !== '') ? rawVal : '-';
+          const isMissing = (rawVal === undefined || rawVal === null || String(rawVal).trim() === '');
+          const displayVal = !isMissing ? rawVal : 'Add info';
           
           const rowHtml = `
             <div class="flex justify-between items-center py-0.5 border-b border-slate-800/40 last:border-0 group/field">
-              <span class="text-slate-400 select-none">${f.label}:</span>
+              <span class="text-slate-400 select-none flex items-center gap-1.5">
+                ${f.label}:
+                ${isMissing ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Field skipped"></span>' : ''}
+              </span>
               <div 
                 id="val_${selectedDateStr}_${tradeIdx}_${f.id}" 
                 ondblclick="startInlineEdit('${selectedDateStr}', ${tradeIdx}, '${f.id}')"
                 title="Double click to edit"
-                class="font-medium text-slate-200 cursor-pointer px-1.5 py-0.5 rounded hover:bg-slate-800/80 transition flex items-center gap-1"
+                class="font-medium cursor-pointer px-1.5 py-0.5 rounded transition flex items-center gap-1 ${isMissing ? 'text-amber-400/90 bg-amber-400/10 border border-dashed border-amber-400/30 hover:bg-amber-400/20' : 'text-slate-200 hover:bg-slate-800/80'}"
               >
                 <span>${displayVal}</span>
-                <span class="opacity-0 group-hover/field:opacity-40 text-[10px]">✎</span>
+                <span class="${isMissing ? 'text-amber-400 text-[11px]' : 'opacity-0 group-hover/field:opacity-40 text-[10px]'}">✎</span>
               </div>
             </div>
           `;
@@ -980,9 +987,10 @@
 
         item.innerHTML = `
           <div class="flex justify-between items-center mb-1.5 pb-1 border-b border-slate-800">
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 flex-wrap">
               <span class="font-semibold text-blue-400 text-xs">Trade #${tradeNumber}</span>
               ${tradeIdx === trades.length - 1 ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded font-medium">Recent</span>' : ''}
+              ${skippedFieldsCount > 0 ? `<span class="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-medium flex items-center gap-1" title="${skippedFieldsCount} field(s) skipped"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>${skippedFieldsCount} pending</span>` : ''}
             </div>
             <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1" title="Delete Trade">
               🗑 Delete
