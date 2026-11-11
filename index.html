@@ -280,17 +280,14 @@
           <input id="newFieldOptions" type="text" placeholder="Options (e.g. BUY, SELL)" class="w-full bg-[#131b2a] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />
         </div>
         <!-- Required / Optional Toggle -->
-        <div class="flex items-center gap-3 pt-0.5">
-          <span class="text-[11px] text-slate-400 font-medium">Field type:</span>
-          <label class="flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="radio" name="fieldRequired" id="radioRequired" value="required" checked class="accent-blue-500" />
-            <span class="text-xs text-blue-300 font-semibold">Required</span>
-            <span class="text-[10px] text-slate-500">(asked first)</span>
+        <div class="flex items-center gap-2 pt-0.5">
+          <label class="flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 rounded-lg border border-slate-700 bg-[#131b2a] hover:border-blue-500 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-600/10">
+            <input type="radio" name="fieldRequired" id="radioRequired" value="required" checked class="accent-blue-500 w-3 h-3" />
+            <span class="text-xs text-slate-200 font-medium">Required</span>
           </label>
-          <label class="flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="radio" name="fieldRequired" id="radioOptional" value="optional" class="accent-amber-400" />
-            <span class="text-xs text-amber-300 font-semibold">Optional</span>
-            <span class="text-[10px] text-slate-500">(fill later)</span>
+          <label class="flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 rounded-lg border border-slate-700 bg-[#131b2a] hover:border-amber-400 transition has-[:checked]:border-amber-400 has-[:checked]:bg-amber-400/10">
+            <input type="radio" name="fieldRequired" id="radioOptional" value="optional" class="accent-amber-400 w-3 h-3" />
+            <span class="text-xs text-slate-200 font-medium">Optional</span>
           </label>
         </div>
         <button id="btnSaveField" onclick="saveField()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2 rounded-lg transition">
@@ -1123,13 +1120,12 @@
           <div class="flex justify-between items-center mb-1.5 pb-1 border-b border-slate-800">
             <div class="flex items-center gap-1.5 flex-wrap">
               <span class="font-semibold text-blue-400 text-xs">Trade #${tradeNumber}</span>
-              ${tradeIdx === trades.length - 1 ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded font-medium">Recent</span>' : ''}
-              ${skippedFieldsCount > 0 ? `<span class="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-medium flex items-center gap-1" title="${skippedFieldsCount} field(s) skipped"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>${skippedFieldsCount} pending</span>` : ''}
+              ${skippedFieldsCount > 0 ? `<span class="text-[9px] bg-amber-500/15 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded-md font-semibold tracking-wide">◑ Incomplete</span>` : ''}
             </div>
-            <div class="flex items-center gap-1.5">
-              ${skippedFieldsCount > 0 ? `<button onclick="startPendingWizard(${tradeIdx})" class="text-[11px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-lg transition flex items-center gap-1 font-medium" title="Fill pending fields">✏️ Edit</button>` : ''}
-              <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1" title="Delete Trade">
-                🗑 Delete
+            <div class="flex items-center gap-1">
+              ${skippedFieldsCount > 0 ? `<button onclick="startPendingWizard(${tradeIdx})" class="text-slate-400 hover:text-amber-300 p-1.5 rounded-lg hover:bg-slate-800 transition" title="Fill incomplete fields">✏️</button>` : ''}
+              <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition p-1.5 rounded-lg hover:bg-slate-800" title="Delete Trade">
+                🗑
               </button>
             </div>
           </div>
