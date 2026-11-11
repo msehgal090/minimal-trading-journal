@@ -279,6 +279,20 @@
         <div id="dropdownOptionsRow" class="hidden">
           <input id="newFieldOptions" type="text" placeholder="Options (e.g. BUY, SELL)" class="w-full bg-[#131b2a] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />
         </div>
+        <!-- Required / Optional Toggle -->
+        <div class="flex items-center gap-3 pt-0.5">
+          <span class="text-[11px] text-slate-400 font-medium">Field type:</span>
+          <label class="flex items-center gap-1.5 cursor-pointer select-none">
+            <input type="radio" name="fieldRequired" id="radioRequired" value="required" checked class="accent-blue-500" />
+            <span class="text-xs text-blue-300 font-semibold">Required</span>
+            <span class="text-[10px] text-slate-500">(asked first)</span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer select-none">
+            <input type="radio" name="fieldRequired" id="radioOptional" value="optional" class="accent-amber-400" />
+            <span class="text-xs text-amber-300 font-semibold">Optional</span>
+            <span class="text-[10px] text-slate-500">(fill later)</span>
+          </label>
+        </div>
         <button id="btnSaveField" onclick="saveField()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2 rounded-lg transition">
           + Add Field
         </button>
@@ -350,13 +364,13 @@
 
     // Default Starter Fields
     const defaultFields = [
-      { id: 'f_1', label: 'Symbol / Stock', type: 'text' },
-      { id: 'f_2', label: 'Trade Type', type: 'dropdown', options: ['BUY', 'SELL'] },
-      { id: 'f_3', label: 'Trade Time', type: 'time' },
-      { id: 'f_4', label: 'Entry Price', type: 'number' },
-      { id: 'f_5', label: 'Exit Price', type: 'number' },
-      { id: 'f_6', label: 'Net P&L', type: 'number' },
-      { id: 'f_7', label: 'Setup / Mistake Note', type: 'text' }
+      { id: 'f_1', label: 'Symbol / Stock', type: 'text', required: true },
+      { id: 'f_2', label: 'Trade Type', type: 'dropdown', options: ['BUY', 'SELL'], required: true },
+      { id: 'f_3', label: 'Trade Time', type: 'time', required: true },
+      { id: 'f_4', label: 'Entry Price', type: 'number', required: true },
+      { id: 'f_5', label: 'Exit Price', type: 'number', required: false },
+      { id: 'f_6', label: 'Net P&L', type: 'number', required: false },
+      { id: 'f_7', label: 'Setup / Mistake Note', type: 'text', required: false }
     ];
 
     // State Variables
@@ -373,6 +387,11 @@
     let currentStepIndex = 0;
     let tempTradeValues = {};
     let editingFieldIndex = null;
+
+    // Wizard mode: 'new' = required fields only, 'pending' = optional/missing fields for existing trade
+    let wizardMode = 'new';
+    let pendingWizardTradeIdx = null;
+    let wizardFields = []; // subset of customFields shown in wizard
 
     function formatDateKey(d) {
       const year = d.getFullYear();
@@ -1107,9 +1126,12 @@
               ${tradeIdx === trades.length - 1 ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded font-medium">Recent</span>' : ''}
               ${skippedFieldsCount > 0 ? `<span class="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-medium flex items-center gap-1" title="${skippedFieldsCount} field(s) skipped"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>${skippedFieldsCount} pending</span>` : ''}
             </div>
-            <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1" title="Delete Trade">
-              🗑 Delete
-            </button>
+            <div class="flex items-center gap-1.5">
+              ${skippedFieldsCount > 0 ? `<button onclick="startPendingWizard(${tradeIdx})" class="text-[11px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-lg transition flex items-center gap-1 font-medium" title="Fill pending fields">✏️ Edit</button>` : ''}
+              <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition text-[11px] flex items-center gap-1" title="Delete Trade">
+                🗑 Delete
+              </button>
+            </div>
           </div>
           <div class="space-y-0.5">${primaryFieldsHtml}</div>
           <div id="extra_${cardKey}" class="${isExpanded ? '' : 'hidden'} space-y-0.5 pt-0.5">
@@ -1233,6 +1255,36 @@
         return;
       }
 
+      wizardMode = 'new';
+      pendingWizardTradeIdx = null;
+      // Only show required fields (or all if none marked required)
+      wizardFields = customFields.filter(f => f.required === true);
+      if (wizardFields.length === 0) wizardFields = [...customFields];
+
+      currentStepIndex = 0;
+      tempTradeValues = {};
+      openEntryView();
+      renderSingleStepField();
+    }
+
+    // Open pending fields wizard for an existing trade
+    function startPendingWizard(tradeIdx) {
+      const trade = tradesData[selectedDateStr] && tradesData[selectedDateStr][tradeIdx];
+      if (!trade) return;
+
+      wizardMode = 'pending';
+      pendingWizardTradeIdx = tradeIdx;
+      // Show only fields that are empty/skipped in this trade
+      wizardFields = customFields.filter(f => {
+        const v = trade[f.id];
+        return (v === undefined || v === null || String(v).trim() === '');
+      });
+
+      if (wizardFields.length === 0) {
+        showToast('No pending fields for this trade!');
+        return;
+      }
+
       currentStepIndex = 0;
       tempTradeValues = {};
       openEntryView();
@@ -1254,11 +1306,13 @@
     }
 
     function renderSingleStepField() {
-      const field = customFields[currentStepIndex];
-      const totalSteps = customFields.length;
+      const field = wizardFields[currentStepIndex];
+      const totalSteps = wizardFields.length;
       const isLastStep = currentStepIndex === totalSteps - 1;
 
-      document.getElementById('stepCounterBadge').innerText = `Step ${currentStepIndex + 1} of ${totalSteps}`;
+      // Show wizard mode label
+      const modeLabel = wizardMode === 'pending' ? 'Filling Pending' : 'Required';
+      document.getElementById('stepCounterBadge').innerText = `${modeLabel} — Step ${currentStepIndex + 1} of ${totalSteps}`;
 
       document.getElementById('btnPrevStep').style.visibility = currentStepIndex === 0 ? 'hidden' : 'visible';
       
@@ -1369,12 +1423,12 @@
     }
 
     function selectDropdownChip(opt) {
-      const field = customFields[currentStepIndex];
+      const field = wizardFields[currentStepIndex];
       tempTradeValues[field.id] = opt;
       const inputEl = document.getElementById('activeStepInput');
       if (inputEl) inputEl.value = opt;
 
-      if (currentStepIndex < customFields.length - 1) {
+      if (currentStepIndex < wizardFields.length - 1) {
         currentStepIndex++;
         renderSingleStepField();
       } else {
@@ -1383,7 +1437,7 @@
     }
 
     function saveCurrentFieldVal() {
-      const field = customFields[currentStepIndex];
+      const field = wizardFields[currentStepIndex];
       if (field && field.type === 'dropdown') return;
       const inputEl = document.getElementById('activeStepInput');
       if (inputEl) {
@@ -1394,7 +1448,7 @@
     function submitCurrentStep() {
       saveCurrentFieldVal();
 
-      if (currentStepIndex < customFields.length - 1) {
+      if (currentStepIndex < wizardFields.length - 1) {
         currentStepIndex++;
         renderSingleStepField();
       } else {
@@ -1403,10 +1457,10 @@
     }
 
     function skipCurrentStep() {
-      const field = customFields[currentStepIndex];
+      const field = wizardFields[currentStepIndex];
       tempTradeValues[field.id] = '';
 
-      if (currentStepIndex < customFields.length - 1) {
+      if (currentStepIndex < wizardFields.length - 1) {
         currentStepIndex++;
         renderSingleStepField();
       } else {
@@ -1423,17 +1477,29 @@
     }
 
     function saveFinalTrade() {
-      pushUndoState('Add Trade Entry');
-      if (!tradesData[selectedDateStr]) {
-        tradesData[selectedDateStr] = [];
-      }
+      pushUndoState(wizardMode === 'pending' ? 'Fill Pending Fields' : 'Add Trade Entry');
 
-      tradesData[selectedDateStr].push({ ...tempTradeValues });
-      saveCurrentAccountTrades();
-      cancelTradeEntry();
-      renderCalendar();
-      renderTradesForDate();
-      showToast('✓ Trade saved successfully!');
+      if (wizardMode === 'pending' && pendingWizardTradeIdx !== null) {
+        // Merge filled values into existing trade
+        const trade = tradesData[selectedDateStr][pendingWizardTradeIdx];
+        Object.assign(trade, tempTradeValues);
+        saveCurrentAccountTrades();
+        cancelTradeEntry();
+        renderCalendar();
+        renderTradesForDate();
+        showToast('✓ Pending fields updated!');
+      } else {
+        // New trade: save required fields; optional fields stay empty
+        if (!tradesData[selectedDateStr]) {
+          tradesData[selectedDateStr] = [];
+        }
+        tradesData[selectedDateStr].push({ ...tempTradeValues });
+        saveCurrentAccountTrades();
+        cancelTradeEntry();
+        renderCalendar();
+        renderTradesForDate();
+        showToast('✓ Trade saved successfully!');
+      }
     }
 
     // ==========================================
@@ -1495,6 +1561,7 @@
             </div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
+            <span class="${f.required !== false ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30' : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'} text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0">${f.required !== false ? 'Required' : 'Optional'}</span>
             <button type="button" onclick="editField(${idx})" class="hover:bg-slate-800 text-blue-400 p-1.5 rounded" title="Edit Field">
               ✏️
             </button>
@@ -1596,6 +1663,11 @@
         document.getElementById('newFieldOptions').value = (f.options || []).join(', ');
       }
 
+      // Set required/optional radio
+      const isRequired = f.required !== false; // default true if not set
+      document.getElementById('radioRequired').checked = isRequired;
+      document.getElementById('radioOptional').checked = !isRequired;
+
       document.getElementById('formActionLabel').innerText = `Edit Field #${idx + 1}`;
       document.getElementById('btnSaveField').innerText = '✓ Update Field';
       document.getElementById('btnCancelEdit').classList.remove('hidden');
@@ -1608,6 +1680,10 @@
       document.getElementById('newFieldOptions').value = '';
       toggleDropdownOptionsInput();
 
+      // Reset radio to Required
+      document.getElementById('radioRequired').checked = true;
+      document.getElementById('radioOptional').checked = false;
+
       document.getElementById('formActionLabel').innerText = 'Add Field';
       document.getElementById('btnSaveField').innerText = '+ Add Field';
       document.getElementById('btnCancelEdit').classList.add('hidden');
@@ -1617,6 +1693,7 @@
       const nameInput = document.getElementById('newFieldName');
       const typeSelect = document.getElementById('newFieldType');
       const optInput = document.getElementById('newFieldOptions');
+      const isRequired = document.getElementById('radioRequired').checked;
 
       const label = nameInput.value.trim();
       const type = typeSelect.value;
@@ -1641,6 +1718,7 @@
       if (editingFieldIndex !== null) {
         customFields[editingFieldIndex].label = label;
         customFields[editingFieldIndex].type = type;
+        customFields[editingFieldIndex].required = isRequired;
         if (options) {
           customFields[editingFieldIndex].options = options;
         } else {
@@ -1650,7 +1728,8 @@
         const newField = {
           id: 'f_' + Date.now(),
           label: label,
-          type: type
+          type: type,
+          required: isRequired
         };
         if (options) {
           newField.options = options;
