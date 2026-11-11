@@ -1253,8 +1253,8 @@
 
       wizardMode = 'new';
       pendingWizardTradeIdx = null;
-      // Only show required fields (or all if none marked required)
-      wizardFields = customFields.filter(f => f.required === true);
+      // Required = explicitly true OR not set (undefined treated as required); Optional = explicitly false
+      wizardFields = customFields.filter(f => f.required !== false);
       if (wizardFields.length === 0) wizardFields = [...customFields];
 
       currentStepIndex = 0;
