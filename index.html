@@ -1064,8 +1064,44 @@
         const cardKey = `${selectedDateStr}_${tradeIdx}`;
         const isExpanded = expandedCardKeys.has(cardKey);
 
+        // Determine trade outcome: Win, Loss, or Break-Even / Neutral
+        let tradeOutcome = 'neutral'; // 'win', 'loss', or 'neutral'
+        const pnlF = customFields.find(f => {
+          const lbl = (f.label || '').toLowerCase();
+          return lbl.includes('pnl') || lbl.includes('p&l') || lbl.includes('profit') || lbl.includes('net');
+        });
+        const resF = customFields.find(f => {
+          const lbl = (f.label || '').toLowerCase();
+          return lbl.includes('result') || lbl.includes('outcome') || lbl.includes('status');
+        });
+
+        if (pnlF && trade[pnlF.id] !== undefined && trade[pnlF.id] !== '') {
+          const pVal = parseFloat(trade[pnlF.id]);
+          if (!isNaN(pVal)) {
+            if (pVal > 0) tradeOutcome = 'win';
+            else if (pVal < 0) tradeOutcome = 'loss';
+            else tradeOutcome = 'neutral';
+          }
+        } else if (resF && trade[resF.id]) {
+          const rVal = String(trade[resF.id]).toLowerCase();
+          if (rVal.includes('win') || rVal.includes('target') || rVal.includes('profit')) {
+            tradeOutcome = 'win';
+          } else if (rVal.includes('loss') || rVal.includes('sl') || rVal.includes('stop')) {
+            tradeOutcome = 'loss';
+          } else {
+            tradeOutcome = 'neutral';
+          }
+        }
+
+        let outcomeBorderClass = 'border-slate-800 hover:border-slate-700';
+        if (tradeOutcome === 'win') {
+          outcomeBorderClass = 'border-emerald-500/40 hover:border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.06)]';
+        } else if (tradeOutcome === 'loss') {
+          outcomeBorderClass = 'border-rose-500/40 hover:border-rose-500/60 shadow-[0_0_12px_rgba(244,63,94,0.06)]';
+        }
+
         const item = document.createElement('div');
-        item.className = 'bg-[#0b0f17] border border-slate-800 rounded-xl p-3 text-xs space-y-1.5 hover:border-slate-700 transition';
+        item.className = `bg-[#0b0f17] border ${outcomeBorderClass} rounded-xl p-3 text-xs space-y-1.5 transition`;
 
         const visibleLimit = 3;
         const hasMoreFields = customFields.length > visibleLimit;
