@@ -1223,6 +1223,7 @@
             </div>
             <div class="flex items-center gap-1">
               ${skippedFieldsCount > 0 ? `<button onclick="startPendingWizard(${tradeIdx})" class="text-slate-400 hover:text-amber-300 p-1.5 rounded-lg hover:bg-slate-800 transition" title="Fill incomplete fields">✏️</button>` : ''}
+              <button onclick="copyTrade(${tradeIdx})" class="text-slate-400 hover:text-blue-300 p-1.5 rounded-lg hover:bg-slate-800 transition" title="Copy this trade as new">📋</button>
               <button onclick="deleteTrade(${tradeIdx})" class="text-slate-500 hover:text-rose-400 transition p-1.5 rounded-lg hover:bg-slate-800" title="Delete Trade">
                 🗑
               </button>
@@ -1384,6 +1385,33 @@
       tempTradeValues = {};
       openEntryView();
       renderSingleStepField();
+    }
+
+    // Copy trade: pre-fill Required+Dropdown fields from an existing trade
+    function copyTrade(tradeIdx) {
+      const trade = tradesData[selectedDateStr] && tradesData[selectedDateStr][tradeIdx];
+      if (!trade) return;
+
+      wizardMode = 'new';
+      pendingWizardTradeIdx = null;
+
+      // Required fields for the wizard
+      wizardFields = customFields.filter(f => f.required !== false);
+      if (wizardFields.length === 0) wizardFields = [...customFields];
+
+      // Pre-fill: copy only Required + Dropdown fields (context fields)
+      // Skip: time, number, text — those are unique per trade
+      tempTradeValues = {};
+      wizardFields.forEach(f => {
+        if (f.type === 'dropdown' && trade[f.id] !== undefined && trade[f.id] !== '') {
+          tempTradeValues[f.id] = trade[f.id];
+        }
+      });
+
+      currentStepIndex = 0;
+      openEntryView();
+      renderSingleStepField();
+      showToast('📋 Context copied — confirm or change each field');
     }
 
     function openEntryView() {
