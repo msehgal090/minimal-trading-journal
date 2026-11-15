@@ -377,13 +377,16 @@
 
     // Default Starter Fields
     const defaultFields = [
-      { id: 'f_1', label: 'Symbol / Stock', type: 'text', required: true },
-      { id: 'f_2', label: 'Trade Type', type: 'dropdown', options: ['BUY', 'SELL'], required: true },
-      { id: 'f_3', label: 'Trade Time', type: 'time', required: true },
-      { id: 'f_4', label: 'Entry Price', type: 'number', required: true },
-      { id: 'f_5', label: 'Exit Price', type: 'number', required: false },
-      { id: 'f_6', label: 'Net P&L', type: 'number', required: false },
-      { id: 'f_7', label: 'Setup / Mistake Note', type: 'text', required: false }
+      { id: 'f_1', label: 'Pair / Symbol', type: 'text', required: true },
+      { id: 'f_2', label: 'Direction', type: 'dropdown', options: ['Buy', 'Sell'], required: true },
+      { id: 'f_3', label: 'Session', type: 'dropdown', options: ['London', 'New York', 'Asian', 'Sydney'], required: true },
+      { id: 'f_4', label: 'Trade Time', type: 'time', required: false },
+      { id: 'f_5', label: 'Entry Price', type: 'number', required: false },
+      { id: 'f_6', label: 'Exit Price', type: 'number', required: false },
+      { id: 'f_7', label: 'Stop Loss', type: 'number', required: false },
+      { id: 'f_8', label: 'Result', type: 'dropdown', options: ['Win', 'Loss', 'BE'], required: false },
+      { id: 'f_9', label: 'Net PnL', type: 'number', required: false },
+      { id: 'f_10', label: 'Notes', type: 'text', required: false }
     ];
 
     // State Variables
