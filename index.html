@@ -1733,9 +1733,11 @@
       }
 
       customFields.forEach((f, idx) => {
+        const isEditing = editingFieldIndex === idx;
         const item = document.createElement('div');
-        item.className = 'flex items-center justify-between bg-[#0b0f17] border border-slate-800 p-2.5 rounded-xl text-xs hover:border-slate-700 transition select-none';
+        item.className = `flex items-center justify-between ${isEditing ? 'bg-blue-600/15 border-blue-500 text-white' : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900/60'} border p-2.5 rounded-xl text-xs transition cursor-pointer select-none`;
         item.dataset.id = f.id;
+        item.onclick = () => editField(idx);
 
         let details = f.type.toUpperCase();
         if (f.type === 'dropdown' && f.options) {
@@ -1744,37 +1746,20 @@
 
         item.innerHTML = `
           <div class="flex items-center gap-2 flex-1 pr-2 min-w-0">
-            <span class="drag-handle text-slate-400 hover:text-white text-base px-2 py-1 rounded cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder">⋮⋮</span>
-            <span class="font-bold text-blue-400 field-idx shrink-0">${idx + 1}.</span>
-            <div id="fieldLabelContainer_${idx}" class="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer" title="Double tap to rename">
-              <span id="fieldLabelText_${idx}" class="font-semibold text-slate-100 truncate hover:text-blue-300 transition">${f.label}</span>
+            <span class="drag-handle text-slate-400 hover:text-white text-base px-2.5 py-1.5 -my-1 rounded-lg cursor-grab active:cursor-grabbing shrink-0 touch-none select-none hover:bg-slate-800" onclick="event.stopPropagation()" title="Drag to reorder">⋮⋮</span>
+            <span class="font-bold ${isEditing ? 'text-blue-300' : 'text-blue-400'} field-idx shrink-0">${idx + 1}.</span>
+            <div class="flex items-center gap-1.5 flex-1 min-w-0">
+              <span class="font-semibold ${isEditing ? 'text-white' : 'text-slate-100'} truncate">${f.label}</span>
               <span class="text-[10px] text-slate-500 shrink-0">(${details})</span>
             </div>
           </div>
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="flex items-center gap-2 shrink-0">
             <span class="${f.required !== false ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30' : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'} text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0">${f.required !== false ? 'Required' : 'Optional'}</span>
-            <button type="button" onclick="editField(${idx})" class="hover:bg-slate-800 text-blue-400 p-1.5 rounded" title="Edit Field">
-              ✏️
-            </button>
-            <button type="button" onclick="removeField(${idx})" class="hover:bg-slate-800 text-rose-400 p-1.5 rounded" title="Delete Field">
+            <button type="button" onclick="event.stopPropagation(); removeField(${idx})" class="hover:bg-slate-800 text-slate-500 hover:text-rose-400 p-1.5 rounded transition" title="Delete Field">
               🗑
             </button>
           </div>
         `;
-
-        const labelBox = item.querySelector(`#fieldLabelContainer_${idx}`);
-        if (labelBox) {
-          labelBox.ondblclick = () => startFieldRename(idx);
-          let lastTap = 0;
-          labelBox.ontouchend = (e) => {
-            const now = Date.now();
-            if (now - lastTap < 350 && now - lastTap > 0) {
-              e.preventDefault();
-              startFieldRename(idx);
-            }
-            lastTap = now;
-          };
-        }
 
         container.appendChild(item);
       });
@@ -1786,7 +1771,7 @@
           handle: '.drag-handle',
           animation: 200,
           ghostClass: 'sortable-ghost',
-          touchStartThreshold: 3,
+          touchStartThreshold: 1,
           onEnd: function (evt) {
             if (evt.oldIndex !== evt.newIndex) {
               pushUndoState('Reorder Fields');
@@ -1846,7 +1831,8 @@
     function editField(idx) {
       editingFieldIndex = idx;
       const f = customFields[idx];
-      document.getElementById('newFieldName').value = f.label;
+      const nameInput = document.getElementById('newFieldName');
+      nameInput.value = f.label;
       document.getElementById('newFieldType').value = f.type;
       
       toggleDropdownOptionsInput();
@@ -1862,6 +1848,10 @@
       document.getElementById('formActionLabel').innerText = `Edit Field #${idx + 1}`;
       document.getElementById('btnSaveField').innerText = '✓ Update Field';
       document.getElementById('btnCancelEdit').classList.remove('hidden');
+
+      // Highlight selected row & focus input
+      renderFieldsList();
+      nameInput.focus();
     }
 
     function cancelFieldEdit() {
@@ -1878,6 +1868,7 @@
       document.getElementById('formActionLabel').innerText = 'Add Field';
       document.getElementById('btnSaveField').innerText = '+ Add Field';
       document.getElementById('btnCancelEdit').classList.add('hidden');
+      renderFieldsList();
     }
 
     function saveField() {
