@@ -245,6 +245,22 @@
           <!-- Rendered via JS -->
         </div>
 
+        <!-- Copy Trade Panel (all fields at once) -->
+        <div id="copyTradePanel" class="hidden mt-4 flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+            <span class="text-xs font-semibold text-blue-400 tracking-wide uppercase">📋 Copy Trade</span>
+            <button onclick="closeCopyPanel()" class="text-xs text-slate-400 hover:text-rose-400 transition">✕ Cancel</button>
+          </div>
+          <div id="copyFieldsContainer" class="space-y-2 overflow-y-auto max-h-[280px] pr-1">
+            <!-- Injected via JS -->
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-800">
+            <button onclick="saveCopiedTrade()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2.5 rounded-lg transition shadow">
+              ✓ Save Trade
+            </button>
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -1387,41 +1403,90 @@
       renderSingleStepField();
     }
 
-    // Copy trade: pre-fill Required+Dropdown fields from an existing trade
+    // Copy trade: show all required fields at once, pre-filled from existing trade
     function copyTrade(tradeIdx) {
       const trade = tradesData[selectedDateStr] && tradesData[selectedDateStr][tradeIdx];
       if (!trade) return;
 
-      wizardMode = 'new';
-      pendingWizardTradeIdx = null;
+      // Required fields to show
+      const fieldsToShow = customFields.filter(f => f.required !== false);
+      const displayFields = fieldsToShow.length > 0 ? fieldsToShow : [...customFields];
 
-      // Required fields for the wizard
-      wizardFields = customFields.filter(f => f.required !== false);
-      if (wizardFields.length === 0) wizardFields = [...customFields];
+      // Build form HTML — pre-fill dropdown fields, leave others blank
+      const container = document.getElementById('copyFieldsContainer');
+      container.innerHTML = '';
 
-      // Pre-fill: copy only Required + Dropdown fields (context fields)
-      // Skip: time, number, text — those are unique per trade
-      tempTradeValues = {};
-      wizardFields.forEach(f => {
-        if (f.type === 'dropdown' && trade[f.id] !== undefined && trade[f.id] !== '') {
-          tempTradeValues[f.id] = trade[f.id];
+      displayFields.forEach(f => {
+        const prefilledVal = (f.type === 'dropdown' && trade[f.id]) ? trade[f.id] : '';
+
+        let inputHtml = '';
+        if (f.type === 'dropdown') {
+          const opts = (f.options || []).map(opt =>
+            `<option value="${opt}" ${prefilledVal === opt ? 'selected' : ''}>${opt}</option>`
+          ).join('');
+          inputHtml = `<select data-field-id="${f.id}" class="w-full bg-[#0b0f17] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none">
+            <option value="">--</option>${opts}
+          </select>`;
+        } else if (f.type === 'time') {
+          inputHtml = `<input type="time" data-field-id="${f.id}" value="" class="w-full bg-[#0b0f17] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />`;
+        } else if (f.type === 'number') {
+          inputHtml = `<input type="number" step="any" data-field-id="${f.id}" placeholder="Enter ${f.label}..." class="w-full bg-[#0b0f17] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />`;
+        } else {
+          inputHtml = `<input type="text" data-field-id="${f.id}" placeholder="Enter ${f.label}..." class="w-full bg-[#0b0f17] border border-slate-700 text-xs text-white rounded-lg px-2.5 py-2 focus:border-blue-500 outline-none" />`;
         }
+
+        const row = document.createElement('div');
+        row.className = 'flex flex-col gap-1';
+        row.innerHTML = `
+          <label class="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+            ${f.label}
+            ${prefilledVal ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-semibold">Copied</span>' : ''}
+          </label>
+          ${inputHtml}
+        `;
+        container.appendChild(row);
       });
 
-      currentStepIndex = 0;
-      openEntryView();
-      renderSingleStepField();
-      showToast('📋 Context copied — confirm or change each field');
+      // Show copy panel, hide trades list and entry wizard
+      document.getElementById('tradesListContainer').classList.add('hidden');
+      document.getElementById('entryContainer').classList.add('hidden');
+      document.getElementById('addTradeBtn').classList.add('hidden');
+      document.getElementById('copyTradePanel').classList.remove('hidden');
+    }
+
+    function closeCopyPanel() {
+      document.getElementById('copyTradePanel').classList.add('hidden');
+      document.getElementById('tradesListContainer').classList.remove('hidden');
+      document.getElementById('addTradeBtn').classList.remove('hidden');
+    }
+
+    function saveCopiedTrade() {
+      const inputs = document.querySelectorAll('#copyFieldsContainer [data-field-id]');
+      const newTrade = {};
+      inputs.forEach(el => {
+        newTrade[el.dataset.fieldId] = el.value.trim();
+      });
+
+      pushUndoState('Copy Trade');
+      if (!tradesData[selectedDateStr]) tradesData[selectedDateStr] = [];
+      tradesData[selectedDateStr].push(newTrade);
+      saveCurrentAccountTrades();
+      closeCopyPanel();
+      renderCalendar();
+      renderTradesForDate();
+      showToast('✓ Trade copied & saved!');
     }
 
     function openEntryView() {
       document.getElementById('entryContainer').classList.remove('hidden');
       document.getElementById('tradesListContainer').classList.add('hidden');
       document.getElementById('addTradeBtn').classList.add('hidden');
+      document.getElementById('copyTradePanel').classList.add('hidden');
     }
 
     function cancelTradeEntry() {
       document.getElementById('entryContainer').classList.add('hidden');
+      document.getElementById('copyTradePanel').classList.add('hidden');
       document.getElementById('tradesListContainer').classList.remove('hidden');
       document.getElementById('addTradeBtn').classList.remove('hidden');
       currentStepIndex = 0;
