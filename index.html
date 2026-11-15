@@ -897,6 +897,52 @@
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const todayStr = formatDateKey(new Date());
 
+      // Auto-detect PnL and Result fields (same logic as weekly summary)
+      const pnlField = customFields.find(f => {
+        const lbl = (f.label || '').toLowerCase();
+        return lbl.includes('pnl') || lbl.includes('p&l') || lbl.includes('profit') || lbl.includes('net');
+      });
+      const resultField = customFields.find(f => {
+        const lbl = (f.label || '').toLowerCase();
+        return lbl.includes('result') || lbl.includes('outcome') || lbl.includes('status');
+      });
+
+      // Helper: get day outcome from trades
+      function getDayOutcome(dateKey) {
+        const dayTrades = tradesData[dateKey];
+        if (!dayTrades || dayTrades.length === 0) return 'none';
+
+        let totalPnl = 0;
+        let hasPnlData = false;
+        let wins = 0, losses = 0;
+
+        dayTrades.forEach(trade => {
+          if (pnlField && trade[pnlField.id] !== undefined && trade[pnlField.id] !== '') {
+            const num = parseFloat(trade[pnlField.id]);
+            if (!isNaN(num)) {
+              totalPnl += num;
+              hasPnlData = true;
+              if (num > 0) wins++;
+              else if (num < 0) losses++;
+            }
+          } else if (resultField && trade[resultField.id]) {
+            const val = String(trade[resultField.id]).toLowerCase();
+            if (val.includes('win') || val.includes('profit') || val.includes('target')) wins++;
+            else if (val.includes('loss') || val.includes('sl') || val.includes('stop')) losses++;
+          }
+        });
+
+        if (hasPnlData) {
+          if (totalPnl > 0) return 'win';
+          if (totalPnl < 0) return 'loss';
+          return 'be';
+        }
+        if (wins > losses) return 'win';
+        if (losses > wins) return 'loss';
+        if (wins > 0 || losses > 0) return 'be';
+        return 'trades'; // has trades but no result data
+      }
+
       const grid = document.getElementById('calendarGrid');
       grid.innerHTML = '';
 
@@ -909,16 +955,32 @@
       for (let day = 1; day <= daysInMonth; day++) {
         const thisDate = new Date(year, month, day);
         const dateKey = formatDateKey(thisDate);
-        const hasTrades = tradesData[dateKey] && tradesData[dateKey].length > 0;
         const isToday = dateKey === todayStr;
         const isSelected = dateKey === selectedDateStr;
+        const dayOutcome = getDayOutcome(dateKey);
+        const hasTrades = dayOutcome !== 'none';
+
+        // Build class based on outcome + selected/today states
+        let cellClass = `relative h-13 sm:h-16 p-2 rounded-xl border cursor-pointer transition flex flex-col justify-between select-none `;
+
+        if (isSelected) {
+          cellClass += 'bg-blue-600/25 border-blue-500 text-white font-semibold shadow';
+        } else if (isToday) {
+          cellClass += 'border-amber-400/80 text-amber-300 font-medium bg-slate-900/40 hover:bg-slate-800/60';
+        } else if (dayOutcome === 'win') {
+          cellClass += 'bg-emerald-500/8 border-emerald-500/35 text-slate-200 hover:bg-emerald-500/15 hover:border-emerald-500/50';
+        } else if (dayOutcome === 'loss') {
+          cellClass += 'bg-rose-500/8 border-rose-500/35 text-slate-200 hover:bg-rose-500/15 hover:border-rose-500/50';
+        } else if (dayOutcome === 'be') {
+          cellClass += 'bg-slate-800/50 border-slate-600/60 text-slate-300 hover:bg-slate-800/70';
+        } else if (dayOutcome === 'trades') {
+          cellClass += 'bg-slate-900/40 border-slate-700 text-slate-300 hover:bg-slate-800/60';
+        } else {
+          cellClass += 'bg-slate-900/40 border-slate-800 text-slate-300 hover:bg-slate-800/60';
+        }
 
         const cell = document.createElement('div');
-        cell.className = `relative h-13 sm:h-16 p-2 rounded-xl border cursor-pointer transition flex flex-col justify-between select-none
-          ${isSelected ? 'bg-blue-600/25 border-blue-500 text-white font-semibold shadow' : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-300'}
-          ${isToday && !isSelected ? 'border-amber-400/80 text-amber-300 font-medium' : ''}
-        `;
-
+        cell.className = cellClass;
         cell.onclick = () => selectDate(dateKey);
 
         const topRow = document.createElement('div');
@@ -928,11 +990,12 @@
 
         if (hasTrades) {
           const count = tradesData[dateKey].length;
+          const dotColor = dayOutcome === 'win' ? 'bg-emerald-400' : dayOutcome === 'loss' ? 'bg-rose-400' : 'bg-slate-400';
           const indicator = document.createElement('div');
           indicator.className = 'flex items-center gap-1';
           indicator.innerHTML = `
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span class="text-[10px] text-slate-400 font-mono">${count}</span>
+            <span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span>
+            <span class="text-[10px] font-mono ${dayOutcome === 'win' ? 'text-emerald-400' : dayOutcome === 'loss' ? 'text-rose-400' : 'text-slate-400'}">${count}</span>
           `;
           cell.appendChild(indicator);
         }
